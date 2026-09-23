@@ -38,16 +38,16 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:25.10   # matches dolphin-emu's own build-windows-ming-libretro.yml
     steps:
+      - name: Install cross-compile toolchain
+        run: |
+          apt update
+          apt install -y git cmake ninja-build pkg-config mingw-w64
+
       - name: Check out fork (post-sync)
         uses: actions/checkout@v4
         with:
           ref: master
           submodules: recursive
-
-      - name: Install cross-compile toolchain
-        run: |
-          apt update
-          apt install -y git cmake ninja-build pkg-config mingw-w64
 
       - name: Configure (MinGW cross-compile)
         run: |
