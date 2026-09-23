@@ -155,6 +155,9 @@ private:
   // GBA button input.
   u16 m_keys = 0;
 
+  // Stretch GBA screen for GB/CGB games
+  bool m_gb_stretch_enabled = false;
+
   u16 m_audio_l_remainder = 0;
   u16 m_audio_r_remainder = 0;
 
@@ -253,6 +256,18 @@ bool CGBPlayer_mGBA::IsGBA() const
   return m_gba_core.IsStarted() && m_gba_core.GetPlatform() == mPLATFORM_GBA;
 }
 
+u32 RGB8Interpolation(u32 real_pixel_1, u32 real_pixel_2)
+{
+  if (real_pixel_1 == real_pixel_2)
+    return real_pixel_1;
+
+  const u32 red_channel = (((real_pixel_1 >> 16) & 0xFF) + ((real_pixel_2 >> 16) & 0xFF)) >> 1;
+  const u32 green_channel = (((real_pixel_1 >> 8) & 0xFF) + ((real_pixel_2 >> 8) & 0xFF)) >> 1;
+  const u32 blue_channel = ((real_pixel_1 & 0xFF) + (real_pixel_2 & 0xFF)) >> 1;
+
+  return 0xFF000000u | (red_channel << 16) | (green_channel << 8) | blue_channel;
+}
+
 void CGBPlayer_mGBA::PrepareScanlineData()
 {
   const std::span video_buffer = m_gba_core.GetVideoBuffer();
@@ -260,13 +275,41 @@ void CGBPlayer_mGBA::PrepareScanlineData()
 
   constexpr u32 scanline_count = 4;
 
-  const u32* color_ptr =
+  const u32* row_ptr =
       video_buffer.data() + (m_current_scanline_index * GBA_VIDEO_HORIZONTAL_PIXELS);
 
-  for (u32 i = 0; i != GBA_VIDEO_HORIZONTAL_PIXELS * scanline_count; ++i)
+  const bool apply_stretch = m_gb_stretch_enabled && !IsGBA();
+
+  if (apply_stretch)
   {
-    const u32 color = *(color_ptr++);
-    scanline_data[i] = M_RGB8_TO_RGB5(color);
+    constexpr u32 GB_VIDEO_X_OFFSET = 40;
+    constexpr u32 GB_VIDEO_WIDTH = 160;
+
+    for (u32 row = 0; row != scanline_count; ++row)
+    {
+      const u32* gb_row = row_ptr + row * GBA_VIDEO_HORIZONTAL_PIXELS + GB_VIDEO_X_OFFSET;
+      u16* out_row = scanline_data.data() + row * GBA_VIDEO_HORIZONTAL_PIXELS;
+
+      u32 out_x = 0;
+      for (u32 src_x = 0; src_x < GB_VIDEO_WIDTH; src_x += 2)
+      {
+        const u32 real_pixel_1 = gb_row[src_x];
+        const u32 real_pixel_2 = gb_row[src_x + 1];
+        out_row[out_x++] = M_RGB8_TO_RGB5(real_pixel_1);
+        out_row[out_x++] = M_RGB8_TO_RGB5(RGB8Interpolation(real_pixel_1, real_pixel_2));
+        out_row[out_x++] = M_RGB8_TO_RGB5(real_pixel_2);
+      }
+    }
+  }
+  else
+  {
+    const u32* color_ptr =
+        video_buffer.data() + (m_current_scanline_index * GBA_VIDEO_HORIZONTAL_PIXELS);
+    for (u32 i = 0; i != GBA_VIDEO_HORIZONTAL_PIXELS * scanline_count; ++i)
+    {
+      const u32 color = *(color_ptr++);
+      scanline_data[i] = M_RGB8_TO_RGB5(color);
+    }
   }
 
   if (m_current_scanline_index == 0)
@@ -343,6 +386,20 @@ void CGBPlayer_mGBA::ProcessAudioBuffer()
 
 void CGBPlayer_mGBA::SetKeys(u16 keys)
 {
+  // GBA key bit layout: bit 8 = R, bit 9 = L.
+  constexpr u16 KEY_R = 1u << 8;
+  constexpr u16 KEY_L = 1u << 9;
+
+  // Detect press (not hold) on L/R to toggle stretch, mirroring the behaviour
+  // of the real GBA's built-in GB-compatibility player: L = stretch to GBA
+  // width, R = restore original GB width. mGBA does not implement this for
+  // emulated GB/GBC content, so we do it ourselves in PrepareScanlineData().
+  const u16 pressed = keys & ~m_keys;
+  if (pressed & KEY_L)
+    m_gb_stretch_enabled = true;
+  else if (pressed & KEY_R)
+    m_gb_stretch_enabled = false;
+
   m_keys = keys;
 }
 
