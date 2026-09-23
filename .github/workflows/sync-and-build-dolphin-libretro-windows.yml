@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "master" ]
   schedule:
-    - cron: '0 */6 * * *'   # check upstream every 6 hours; adjust or remove as you like
+    - cron: '0 0 1 * *'    # check upstream once a month, at 00:00 UTC on the 1st
   workflow_dispatch: {}      # lets you trigger a run manually from the Actions tab
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
 
       - name: Merge upstream/master into this fork
         run: |
-          git remote add upstream https://github.com/dolphin-emu/dolphin.git
+          git remote add upstream https://github.com/libretro/dolphin.git
           git fetch upstream master
           git merge upstream/master --no-edit
           git push origin HEAD:master
@@ -78,5 +78,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dolphin_libretro-windows-x64
-          path: build/dolphin_libretro.dll
+          path: Binary/x64/dolphin_libretro.dll
           if-no-files-found: error
