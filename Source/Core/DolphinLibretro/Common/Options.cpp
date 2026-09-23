@@ -170,6 +170,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "enabled"
   },
   {
+    Libretro::Options::core::MAIN_LOAD_GAME_INTO_MEMORY,
+    "Core > Load Whole Game Into Memory",
+    "Load Whole Game Into Memory",
+    "Load Whole Game Into Memory. Requires core RESTART.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", "Disabled" },
+      { "enabled",  "Enabled" },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
     Libretro::Options::core::MAIN_PRECISION_FRAME_TIMING,
     "Core > Precision Frame Timing",
     "Precision Frame Timing",
@@ -383,7 +397,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
 #endif
       { nullptr,   nullptr }
     },
-    "Info"
+    "4"
   },
   {
     Libretro::Options::main_interface::LOG_BOOT,
@@ -1030,6 +1044,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::gfx_settings::MODS_ENABLE,
+    "Graphics > Settings > Enable Mods",
+    "Enable Mods",
+    "Loads graphic mods from User/Load/GraphicsMods.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
   // ========== Graphics.Enhancements ==========
   {
@@ -1433,7 +1461,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
     Libretro::Options::gfx_gamespecific::GFX_PERF_QUERIES_ENABLE,
     "Graphics > Game Specific > Performance Queries",
     "Performance Queries",
-    "Enable performance queiries.",
+    "Enable performance queries.",
     nullptr,
     CATEGORY_GFX_GAMESPECIFIC,
     {
@@ -1468,6 +1496,31 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { nullptr,  nullptr }
     },
     "L3"
+  },
+  {
+    Libretro::Options::wiimote::HOTKEY_UPRIGHT_TOGGLE,
+    "WiiMote Upright > Toggle Button",
+    "Upright Toggle Button",
+    "Button used to toggle upright mode. Can be disabled.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { MODIFIER_DISABLED_CONTROL, "Disabled" },
+      { "L3",     nullptr },
+      { "R3",     nullptr },
+      { "L1",     nullptr },
+      { "R1",     nullptr },
+      { "L2",     nullptr },
+      { "R2",     nullptr },
+      { "A",      nullptr },
+      { "B",      nullptr },
+      { "X",      nullptr },
+      { "Y",      nullptr },
+      { "Start",  nullptr },
+      { "Select", nullptr },
+      { nullptr,  nullptr }
+    },
+    "Disabled"
   },
 
   // ========== Wiimote IR ==========
@@ -1715,6 +1768,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::wiimote::IR_PASSTHROUGH,
+    "Wiimote IR > Wiimote IR Passthrough",
+    "Wiimote IR Passthrough",
+    "Take the Wiimote camera's view of the sensor bar straight from the frontend, instead of deriving it from a cursor position. The frontend supplies up to four IR objects on pointer indices 1-4; Wiimote IR Mode, Total Yaw, Total Pitch and Vertical Offset are all bypassed. For frontends that know the real geometry (a VR room, a tracked light gun) this is exact, and it carries roll and distance, which a cursor cannot. Leave off for a mouse or a gamepad.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
 #if defined(HAS_OPENGL) && defined(__WEBOS__)
   {
@@ -1772,7 +1839,25 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "enabled",  nullptr },
       { nullptr, nullptr }
     },
+#if defined(ANDROID) || defined(__WEBOS__)
+    "enabled" // enable by default because of SAF (android play version) / storage (webOS)
+#else
     "disabled"
+#endif
+  },
+  {
+    Libretro::Options::retroarch_core::ENABLE_DEFAULT_MOUSE_BINDINGS,
+    "RetroArch core > Enable Default Mouse Bindings",
+    "Enable Default Mouse Bindings",
+    "Enable default Mouse Bindings, disable for more control on bindings.",
+    nullptr,
+    CATEGORY_RETROARCH_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
   },
 
   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }

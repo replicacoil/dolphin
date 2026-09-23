@@ -135,6 +135,7 @@ namespace core {
   constexpr const char CPU_CLOCK_RATE[] = "dolphin_cpu_clock_rate";
   constexpr const char EMULATION_SPEED[] = "dolphin_emulation_speed";
   constexpr const char MAIN_CPU_THREAD[] = "dolphin_main_cpu_thread";
+  constexpr const char MAIN_LOAD_GAME_INTO_MEMORY[] = "dolphin_main_load_game_into_memory";
   constexpr const char MAIN_PRECISION_FRAME_TIMING[] = "dolphin_precision_frame_timing";
   constexpr const char FASTMEM[] = "dolphin_fastmem";
   constexpr const char FASTMEM_ARENA[] = "dolphin_fastmem_arena";
@@ -233,6 +234,7 @@ namespace gfx_settings {
   constexpr const char ENABLE_PIXEL_LIGHTING[] = "dolphin_pixel_lighting";
   constexpr const char FAST_DEPTH_CALCULATION[] = "dolphin_fast_depth_calculation";
   constexpr const char DISABLE_FOG[] = "dolphin_disable_fog";
+  constexpr const char MODS_ENABLE[] = "dolphin_mods_enabled";
 }  // namespace gfx_settings
 
 // ======================================================
@@ -292,6 +294,7 @@ namespace wiimote {
 
   // General and options
   constexpr const char HOTKEY_SIDEWAYS_TOGGLE[] = "dolphin_hotkey_sideways_toggle";
+  constexpr const char HOTKEY_UPRIGHT_TOGGLE[] = "dolphin_hotkey_upright_toggle";
 
   // Motion simulation
   constexpr const char IR_MODE[] = "dolphin_ir_mode";
@@ -302,6 +305,7 @@ namespace wiimote {
   constexpr const char IR_MODIFIER[] = "dolphin_ir_modifier";
   constexpr const char SWING_MODIFIER[] = "dolphin_swing_modifier";
   constexpr const char SWING_ANGLE[] = "dolphin_swing_angle";
+  constexpr const char IR_PASSTHROUGH[] = "dolphin_ir_passthrough";
 }  // namespace wiimote
 
 // ======================================================
@@ -319,6 +323,7 @@ namespace retroarch_core {
 #endif
 
   constexpr const char ENABLE_LIBRETRO_VFS[] = "dolphin_libretro_vfs_enabled";
+  constexpr const char ENABLE_DEFAULT_MOUSE_BINDINGS[] = "dolphin_default_mouse_bindings_enabled";
 
 }  // namespace wiimote
 

@@ -322,8 +322,8 @@ void JitArm64::FlushPPCStateBeforeSlowAccess(ARM64Reg temp_gpr, ARM64Reg temp_fp
   MemChecks& mem_checks = m_system.GetPowerPC().GetMemChecks();
   if (mem_checks.HasAny())
   {
-    gpr.StoreRegisters(mem_checks.GetGPRsUsedInConditions(), temp_gpr, FlushMode::MaintainState);
-    fpr.StoreRegisters(mem_checks.GetFPRsUsedInConditions(), temp_fpr, FlushMode::MaintainState);
+    gpr.FlushRegisters(mem_checks.GetGPRsUsedInConditions(), FlushMode::MaintainState, temp_gpr);
+    fpr.FlushRegisters(mem_checks.GetFPRsUsedInConditions(), FlushMode::MaintainState, temp_fpr);
   }
 }
 
@@ -345,6 +345,8 @@ bool JitArm64::HandleFastmemFault(SContext* ctx)
 
   const Common::ScopedJITPageWriteAndNoExecute enable_jit_page_writes(GetRegionPtr());
   ARM64XEmitter emitter(const_cast<u8*>(fastmem_area_start), const_cast<u8*>(fastmem_area_end));
+
+  emitter.SetWritableRegionDiff(GetWritableRegionDiff());
 
   emitter.BL(slow_handler_iter->second.slow_access_code);
 

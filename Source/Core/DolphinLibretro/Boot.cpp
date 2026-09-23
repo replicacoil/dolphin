@@ -293,13 +293,42 @@ bool retro_load_game(const struct retro_game_info* game)
     bool yes_no, Common::MsgType style) -> bool
   {
     // Log the message instead of showing a popup
-    INFO_LOG_FMT(COMMON, "Suppressed popup: {} - {}", caption, text);
+    WARN_LOG_FMT(COMMON, "Suppressed popup: {} - {}", caption, text);
+    Libretro::Log::LogFrontEnd(style, caption, text, 2000);
     return true; // Always "continue"
   });
 
-  INFO_LOG_FMT(COMMON, "SCM Git revision: {}", Common::GetScmRevGitStr());
-  INFO_LOG_FMT(COMMON, "User Directory set to '{}'", user_dir);
-  INFO_LOG_FMT(COMMON, "System Directory set to '{}'", sys_dir);
+  NOTICE_LOG_FMT(BOOT, "SCM Git revision: {}", Common::GetScmRevGitStr());
+  NOTICE_LOG_FMT(BOOT, "User Directory set to '{}'", user_dir);
+  NOTICE_LOG_FMT(BOOT, "System Directory set to '{}'", sys_dir);
+
+  const std::string codehandler = std::string(sys_dir) + DIR_SEP GECKO_CODE_HANDLER;
+
+  if (!File::Exists(codehandler))
+  {
+#if defined(ANDROID) || defined(IPHONEOS)
+    // for reduced area to display the message..
+    const std::string missing_core_files_msg =
+      fmt::format(
+        "IMPORTANT - Open Online Updater ->\n"
+        "Core System Files Downloader -> Dolphin.zip.");
+#else
+    const std::string missing_core_files_msg =
+      fmt::format(
+        "Core file {} missing! Open Online Updater ->\n"
+        "Core System Files Downloader -> Install Dolphin.zip. "
+        "Restart core to take effect.",
+        GECKO_CODE_HANDLER);
+#endif
+
+    //OSD::AddMessage(missing_core_files_msg, OSD::Duration::VERY_LONG, OSD::Color::RED);
+
+    Libretro::Log::LogFrontEnd(
+      Common::Log::LogLevel::LERROR, missing_core_files_msg.c_str(),
+      OSD::Duration::VERY_LONG);
+
+    ERROR_LOG_FMT(BOOT, "{}", missing_core_files_msg);
+  }
 
   // Main.Core
   Config::SetBase(Config::MAIN_CPU_CORE,
@@ -326,6 +355,9 @@ bool retro_load_game(const struct retro_game_info* game)
   // dual core (true) or single core (false)
   Config::SetBase(Config::MAIN_CPU_THREAD,
     Libretro::GetOption<bool>(core::MAIN_CPU_THREAD, /*def=*/true));
+
+  Config::SetBase(Config::MAIN_LOAD_GAME_INTO_MEMORY,
+    Libretro::GetOption<bool>(core::MAIN_LOAD_GAME_INTO_MEMORY, /*def=*/false));
 
   Config::SetBase(Config::MAIN_ENABLE_CHEATS,
                      Libretro::GetOption<bool>(core::CHEATS_ENABLED, /*def=*/false));
@@ -459,6 +491,9 @@ bool retro_load_game(const struct retro_game_info* game)
   if (Common::is_uwp())
     Config::SetBase(Config::GFX_SHADER_CACHE, false);
 
+  Config::SetBase(Config::GFX_MODS_ENABLE,
+    Libretro::GetOption<bool>(gfx_settings::MODS_ENABLE, /*def=*/false));
+
   // Graphics.Enhancements
   Config::SetBase(Config::GFX_ENHANCE_FORCE_TEXTURE_FILTERING,
                   static_cast<TextureFilteringMode>(
@@ -573,7 +608,19 @@ bool retro_load_game(const struct retro_game_info* game)
 
 #ifdef IPHONEOS
   bool can_jit = false;
-  if (!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_JIT_CAPABLE, &can_jit) || !can_jit)
+  {
+    struct retro_exec_mem_alloc probe = {};
+    probe.version = 1;
+    probe.size = 0;
+    if (Libretro::environ_cb(RETRO_ENVIRONMENT_EXEC_MEM_ALLOC, &probe))
+    {
+      if (probe.mode != RETRO_EXEC_MEM_MODE_UNAVAILABLE)
+        can_jit = true;
+    }
+    else if (!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_JIT_CAPABLE, &can_jit))
+      can_jit = false;
+  }
+  if (!can_jit)
   {
     auto current = Config::Get(Config::MAIN_CPU_CORE);
     if (current == PowerPC::CPUCore::JIT64 ||
@@ -587,9 +634,9 @@ bool retro_load_game(const struct retro_game_info* game)
     OSD::AddMessage("CPU: Just in time compiler disabled as unavailable on your system", OSD::Duration::NORMAL);
   }
 #endif
-  INFO_LOG_FMT(BOOT, "CPU Core: {}", Libretro::Options::CPUCoreToString(Config::Get(Config::MAIN_CPU_CORE)));
-  INFO_LOG_FMT(BOOT, "Fastmem enabled = {}", (Config::Get(Config::MAIN_FASTMEM)) ? "Yes" : "No");
-  INFO_LOG_FMT(BOOT, "JIT debug enabled = {}", Config::IsDebuggingEnabled() ? "Yes" : "No");
+  NOTICE_LOG_FMT(BOOT, "CPU Core: {}", Libretro::Options::CPUCoreToString(Config::Get(Config::MAIN_CPU_CORE)));
+  NOTICE_LOG_FMT(BOOT, "Fastmem enabled = {}", (Config::Get(Config::MAIN_FASTMEM)) ? "Yes" : "No");
+  NOTICE_LOG_FMT(BOOT, "JIT debug enabled = {}", Config::IsDebuggingEnabled() ? "Yes" : "No");
 
   Libretro::FrameTiming::Init();
   Libretro::Audio::Init();
