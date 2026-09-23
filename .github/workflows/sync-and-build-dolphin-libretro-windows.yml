@@ -76,9 +76,13 @@ jobs:
           cd build
           ninja -j$(nproc)
 
+      - name: Locate build output
+        if: always()
+        run: find . -iname "dolphin_libretro.dll" -o -iname "dolphin_libretro.dll.a"
+
       - name: Upload dolphin_libretro.dll
         uses: actions/upload-artifact@v4
         with:
           name: dolphin_libretro-windows-x64
-          path: Binary/x64/dolphin_libretro.dll
+          path: build/Binaries/dolphin_libretro.dll
           if-no-files-found: error
