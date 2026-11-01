@@ -1,4 +1,5 @@
 
+#include <cmath>
 #include <cstdint>
 #include <libretro.h>
 #include <string>
@@ -39,11 +40,13 @@
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/Video.h"
+#include "DolphinLibretro/VR.h"
 #include "VideoBackends/OGL/OGLTexture.h"
 #include "VideoBackends/OGL/OGLGfx.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/OnScreenDisplay.h"
+#include "VideoCommon/Present.h"
 #include "VideoCommon/TextureConfig.h"
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
@@ -74,12 +77,37 @@ namespace Libretro
 {
 extern retro_environment_t environ_cb;
 static bool widescreen;
+// The aspect ratio last reported to the frontend (FrameAspect)
+static float frame_aspect;
+// Whether the geometry last reported to the frontend was sized for VR
+static bool vr_frame;
 double g_core_refresh_rate{0};
 // Reset per game (see retro_run): the first refresh-rate settle after boot must not
 // trigger a mode-family reinit, only a real in-game 50<->60 switch should.
 static bool s_refresh_rate_settled = false;
 extern void reload_cheats_from_ini();
 extern unsigned msg_interface_version;
+
+// Dolphin stretches its picture over the frame and the frontend gets the
+// Aspect Ratio mode's ratio, so the picture is not scaled twice; Stretch and
+// VR give 4:3 or 16:9 by whether the game runs widescreen.
+static float FrameAspect()
+{
+  const auto aspect_mode = static_cast<AspectMode>(Options::GetCached<int>(
+      Options::gfx_settings::ASPECT_RATIO, static_cast<int>(AspectMode::Stretch)));
+  if (aspect_mode == AspectMode::Stretch || VR::IsEnabled() || !g_presenter || !g_widescreen)
+    return widescreen ? 16.0f / 9.0f : 4.0f / 3.0f;
+  const float aspect = g_presenter->CalculateDrawAspectRatio(aspect_mode, false);
+  return aspect > 0.0f ? aspect : (widescreen ? 16.0f / 9.0f : 4.0f / 3.0f);
+}
+
+static void ApplyAspectMode()
+{
+  if (VR::IsEnabled())
+    VR::ApplyConfig();
+  else
+    Config::SetCurrent(Config::GFX_ASPECT_RATIO, AspectMode::Stretch);
+}
 }  // namespace Libretro
 
 extern "C" {
@@ -114,10 +142,16 @@ static const struct retro_subsystem_info subsystems[] = {
   },
   {nullptr, nullptr, nullptr, 0, 0}};
 cb(RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO, (void*)subsystems);
+
+  // Declared before any game loads, so a frontend can list them without one
+  Libretro::Options::SetVariables();
 }
 
 void retro_init(void)
 {
+  uint64_t serialization_quirks = RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE;
+  Libretro::environ_cb(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &serialization_quirks);
+
   enum retro_pixel_format xrgb888 = RETRO_PIXEL_FORMAT_XRGB8888;
   Libretro::environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &xrgb888);
 
@@ -177,10 +211,10 @@ void retro_get_system_av_info(retro_system_av_info* info)
   // Fixed max (>= any runtime height) so base can grow via SET_GEOMETRY alone.
   int max_height = base_height > 576 ? base_height : 576;
 
-  info->geometry.base_width  = EFB_WIDTH * efbScale;
+  info->geometry.base_width  = Libretro::Video::GetAdjustedBaseWidth() * efbScale;
   info->geometry.base_height = base_height * efbScale;
 
-  info->geometry.max_width   = EFB_WIDTH * efbScale;
+  info->geometry.max_width   = Libretro::Video::GetAdjustedBaseWidth() * efbScale;
   info->geometry.max_height  = max_height * efbScale;
 
   if (g_widescreen)
@@ -188,7 +222,12 @@ void retro_get_system_av_info(retro_system_av_info* info)
   else if (Core::System::GetInstance().IsWii())
     Libretro::widescreen = Config::Get(Config::SYSCONF_WIDESCREEN);
 
-  info->geometry.aspect_ratio = Libretro::widescreen ? 16.0 / 9.0 : 4.0 / 3.0;
+  info->geometry.aspect_ratio = Libretro::frame_aspect = Libretro::FrameAspect();
+
+  // The packed frame holds both eyes side by side
+  Libretro::vr_frame = Libretro::VR::IsEnabled();
+  if (Libretro::vr_frame)
+    info->geometry.aspect_ratio *= 2.0;
 
   Core::System& system = Core::System::GetInstance();
   double fps = system.GetVideoInterface().GetTargetRefreshRate();
@@ -318,7 +357,17 @@ void retro_run(void)
         ->SetSystemFrameBuffer((GLuint)Libretro::Video::hw_render.get_current_framebuffer());
   }
 
-  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::EFB_SCALE))
+  // Turning VR on or off doubles or halves the frame width, so resize it as for EFB scale.
+  bool vr_resized = false;
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::VR_MODE))
+  {
+    const bool vr_enabled = Libretro::VR::IsEnabled();
+    if (vr_enabled || Libretro::vr_frame)
+      Libretro::VR::ApplyConfig();
+    vr_resized = vr_enabled != Libretro::vr_frame;
+  }
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::EFB_SCALE) || vr_resized)
   {
     g_Config.iEFBScale = Libretro::Options::GetCached<int>(
       Libretro::Options::gfx_settings::EFB_SCALE);
@@ -340,8 +389,9 @@ void retro_run(void)
     Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);
   }
 
-  if (g_widescreen &&
-      Libretro::widescreen != (g_widescreen->IsGameWidescreen() || g_Config.bWidescreenHack))
+  if ((g_widescreen &&
+       Libretro::widescreen != (g_widescreen->IsGameWidescreen() || g_Config.bWidescreenHack)) ||
+      std::fabs(Libretro::FrameAspect() - Libretro::frame_aspect) > 0.001f)
   {
     retro_system_av_info info;
     retro_get_system_av_info(&info);
@@ -404,13 +454,13 @@ void retro_run(void)
     Libretro::Input::ResetControllers(flags);
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::ASPECT_RATIO))
-    Config::SetCurrent(
-      Config::GFX_ASPECT_RATIO, static_cast<AspectMode>(
-        Libretro::GetOption<int>(
-          Libretro::Options::gfx_settings::ASPECT_RATIO, static_cast<int>(AspectMode::Stretch)
-        )
-      )
-    );
+  {
+    // VR sets the aspect ratio together with its stereoscopy settings
+    Libretro::ApplyAspectMode();
+    retro_system_av_info info;
+    retro_get_system_av_info(&info);
+    Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);
+  }
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE))
     g_Config.bSkipEFBCopyToRam = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE, true);
@@ -469,15 +519,24 @@ void retro_run(void)
     Config::SetCurrent(Config::MAIN_WII_SPEAK_MUTED,
       Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WII_SPEAK_MUTED));
 
-  if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING))
+  const bool wiimoteDeviceUpdated =
+    Libretro::Options::IsUpdated(Libretro::Options::wiimote::DEFAULT_DEVICE);
+  if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING) ||
+      wiimoteDeviceUpdated)
   {
     Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
-      Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING));
+      Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING) ||
+      Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::DEFAULT_DEVICE) == "real");
     WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
   }
 
+  if (wiimoteDeviceUpdated)
+    Libretro::Input::ResetControllers(WiimoteUpdateFlags{});
+
   if (Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED))
     Libretro::Input::BluetoothPassthroughBind();
+
+  Libretro::VR::Update(Libretro::widescreen ? 16.0f / 9.0f : 4.0f / 3.0f);
 
   RETRO_PERFORMANCE_INIT(dolphin_main_func);
   RETRO_PERFORMANCE_START(dolphin_main_func);
@@ -494,15 +553,6 @@ void retro_run(void)
 
   RETRO_PERFORMANCE_STOP(dolphin_main_func);
 
-  if (auto* sound_stream = system.GetSoundStream())
-  {
-    auto* libretro_stream = static_cast<Libretro::Audio::Stream*>(sound_stream);
-    if (libretro_stream)
-    {
-      libretro_stream->PushAudioForFrame();
-    }
-  }
-
   if (Libretro::Input::g_has_microphone_support)
     poll_microphone();
 }
@@ -512,6 +562,9 @@ size_t retro_serialize_size(void)
   size_t size = 0;
 
   Core::System& system = Core::System::GetInstance();
+  if (!Core::IsRunning(system))
+    return 0;
+
   AsyncRequests* ar = AsyncRequests::GetInstance();
 
   if (system.IsDualCoreMode())
@@ -531,6 +584,9 @@ size_t retro_serialize_size(void)
 bool retro_serialize(void* data, size_t size)
 {
   Core::System& system = Core::System::GetInstance();
+  if (!Core::IsRunning(system))
+    return false;
+
   AsyncRequests* ar = AsyncRequests::GetInstance();
 
   if (system.IsDualCoreMode())
@@ -557,6 +613,9 @@ bool retro_serialize(void* data, size_t size)
 bool retro_unserialize(const void* data, size_t size)
 {
   Core::System& system = Core::System::GetInstance();
+  if (!Core::IsRunning(system))
+    return false;
+
   AsyncRequests* ar = AsyncRequests::GetInstance();
 
   if (system.IsDualCoreMode())

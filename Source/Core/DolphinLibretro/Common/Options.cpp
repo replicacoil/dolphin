@@ -23,6 +23,7 @@ static constexpr const char* CATEGORY_GFX_HACKS = "graphics_hacks";
 static constexpr const char* CATEGORY_GFX_GAMESPECIFIC = "graphics_gamespecific";
 static constexpr const char* CATEGORY_WIIMOTE = "wiimote";
 static constexpr const char* CATEGORY_RETROARCH_CORE = "retroarch_core";
+static constexpr const char* CATEGORY_WIIMOTE_DSU = "wiimote_dsu";
 
 // V2 Categories
 static const struct retro_core_option_v2_category option_cats[] = {
@@ -85,6 +86,11 @@ static const struct retro_core_option_v2_category option_cats[] = {
     CATEGORY_RETROARCH_CORE,
     "RetroArch Core",
     "Configure settings which are specific to the RetroArch core and do not exist in dolphin standlone."
+  },
+  {
+  CATEGORY_WIIMOTE_DSU,
+    "Wiimote (DSU)",
+    "Configure DSU client for DualShock motion data."
   },
   { NULL, NULL, NULL }
 };
@@ -597,7 +603,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "2",  "Async - driven by callbacks using refresh rate and audio buffer status" },
       { nullptr, nullptr }
     },
-    "0"
+    "1"
   },
 
   // ========== SYSCONF (GC) ==========
@@ -1064,6 +1070,21 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::gfx_settings::VR_MODE,
+    "Graphics > Settings > VR Mode",
+    "VR Mode",
+    "'Stereoscopic' shows the game on a virtual screen in 3D. 'Immersive' also turns the game camera with your head. Expect odd things in immersive mode. Requires a frontend with VR support.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled",  nullptr },
+      { "stereo",    "Stereoscopic" },
+      { "immersive", "Immersive (Free Look)" },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
   // ========== Graphics.Enhancements ==========
   {
@@ -1479,6 +1500,31 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
 
   {
+    Libretro::Options::wiimote::DEFAULT_DEVICE,
+    "WiiMote > Device",
+    "Device",
+    "Device to use on every Wii port, in place of the one set for that port. Real WiiMote plays with Wiimotes connected to this device, for example through a DolphinBar, and scans for them continuously.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "frontend",               "Set per port" },
+      { "upright",                "WiiMote (upright)" },
+      { "sideways",               "WiiMote (sideways)" },
+      { "nunchuk",                "WiiMote + Nunchuk" },
+      { "classic",                "WiiMote + Classic Controller" },
+      { "classic_pro",            "WiiMote + Classic Controller Pro" },
+      { "motionplus",             "WiiMote + MotionPlus" },
+      { "motionplus_sideways",    "WiiMote + MotionPlus (sideways)" },
+      { "motionplus_nunchuk",     "WiiMote + MotionPlus + Nunchuk" },
+      { "motionplus_classic",     "WiiMote + MotionPlus + Classic Controller" },
+      { "motionplus_classic_pro", "WiiMote + MotionPlus + Classic Controller Pro" },
+      { "real",                   "Real WiiMote" },
+      { "gamecube",               "GameCube Controller" },
+      { nullptr, nullptr }
+    },
+    "frontend"
+  },
+  {
     Libretro::Options::wiimote::HOTKEY_SIDEWAYS_TOGGLE,
     "WiiMote Sideways > Toggle Button",
     "Sideways Toggle Button",
@@ -1864,6 +1910,103 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { nullptr, nullptr }
     },
     "enabled"
+  },
+#ifdef CIFACE_USE_DUALSHOCKUDPCLIENT
+  // ========== DSU Client ==========
+  {
+    Libretro::Options::wiimote_dsu::DSU_ENABLED,
+    "Wiimote (DSU) > Enable DSU Client",
+    "Enable DSU Client",
+    "Enable DSU client for DualShock motion data. Restart core to take effect.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_IP_1,
+    "Wiimote (DSU) > Server IP Octet 1",
+    "Server IP Octet 1",
+    "First octet of DSU server IP. e.g. for 192.168.1.10 set this to 192.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    {
+      { "127", nullptr },
+      { "192", nullptr },
+      { nullptr, nullptr }
+    },
+    "127"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_IP_2,
+    "Wiimote (DSU) > Server IP Octet 2",
+    "Server IP Octet 2",
+    "Second octet of DSU server IP. e.g. for 192.168.1.10 set this to 168.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    {
+      { "0", nullptr },
+      { "168", nullptr },
+      { nullptr, nullptr }
+    },
+    "0"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_IP_3,
+    "Wiimote (DSU) > Server IP Octet 3",
+    "Server IP Octet 3",
+    "Third octet of DSU server IP. e.g. for 192.168.1.10 set this to 1.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    { OCTET_VALUES },
+    "0"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_IP_4,
+    "Wiimote (DSU) > Server IP Octet 4",
+    "Server IP Octet 4",
+    "Fourth octet of DSU server IP. e.g. for 192.168.1.10 set this to 10.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    { OCTET_VALUES },
+    "1"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_PORT,
+    "Wiimote (DSU) > Server Port",
+    "Server Port",
+    "UDP port of DSU server. Default is 26760.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    {
+      { "26760", "26760 (default)" },
+      { "26761", "26761" },
+      { "26762", "26762" },
+      { "26763", "26763" },
+      { "26764", "26764" },
+      { "26765", "26765" },
+      { nullptr, nullptr }
+    },
+    "26760"
+  },
+#endif
+  {
+   Libretro::Options::retroarch_core::ENABLE_LOG_POPUPS,
+    "Interface > Logging > Popups",
+    "Popup Logging",
+    "Enable Popup log messages.",
+    nullptr,
+    CATEGORY_RETROARCH_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr,    nullptr }
+    },
+    "disabled"
   },
 
   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }

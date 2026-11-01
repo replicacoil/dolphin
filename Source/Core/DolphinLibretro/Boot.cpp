@@ -32,8 +32,10 @@
 #include "DolphinLibretro/Common/Globals.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/Video.h"
+#include "DolphinLibretro/VR.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
+#include "InputCommon/ControllerInterface/DualShockUDPClient/DualShockUDPClient.h"
 #include "UICommon/DiscordPresence.h"
 #include "UICommon/UICommon.h"
 #include "VideoCommon/AsyncRequests.h"
@@ -303,7 +305,10 @@ bool retro_load_game(const struct retro_game_info* game)
   {
     // Log the message instead of showing a popup
     WARN_LOG_FMT(COMMON, "Suppressed popup: {} - {}", caption, text);
-    Libretro::Log::LogFrontEnd(style, caption, text, 2000);
+
+    if (Libretro::GetOption<bool>(retroarch_core::ENABLE_LOG_POPUPS,
+                            /*def=*/false))
+      Libretro::Log::LogFrontEnd(style, caption, text, 2000);
     return true; // Always "continue"
   });
 
@@ -396,7 +401,8 @@ bool retro_load_game(const struct retro_game_info* game)
 
   Config::SetBase(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
                   Libretro::GetOption<bool>(sysconf::WIIMOTE_CONTINUOUS_SCANNING,
-                                             /*def=*/false));
+                                             /*def=*/false) ||
+                  Libretro::GetOption<std::string>(wiimote::DEFAULT_DEVICE, "frontend") == "real");
   Config::SetBase(Config::MAIN_MMU,
                   Libretro::GetOption<bool>(core::MAIN_MMU, /*def=*/false));
 
@@ -464,13 +470,9 @@ bool retro_load_game(const struct retro_game_info* game)
   // Graphics.Settings
   Config::SetBase(Config::GFX_WIDESCREEN_HACK,
                  Libretro::GetOption<bool>(gfx_settings::WIDESCREEN_HACK, /*def=*/false));
-  Config::SetBase(
-    Config::GFX_ASPECT_RATIO, static_cast<AspectMode>(
-      Libretro::GetOption<int>(
-        gfx_settings::ASPECT_RATIO, static_cast<int>(AspectMode::Stretch)
-      )
-    )
-  );
+  // Dolphin stretches its picture over the frame; the Aspect Ratio option
+  // sets the aspect ratio the frontend shows it at (Main.cpp, FrameAspect)
+  Config::SetBase(Config::GFX_ASPECT_RATIO, AspectMode::Stretch);
   Config::SetBase(Config::GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES,
                  Libretro::GetOption<int>(gfx_settings::TEXTURE_CACHE_ACCURACY, 128));
   Config::SetBase(Config::GFX_HIRES_TEXTURES,
@@ -610,6 +612,33 @@ bool retro_load_game(const struct retro_game_info* game)
   // Graphics.GameSpecific
   Config::SetBase(Config::GFX_PERF_QUERIES_ENABLE,
                  Libretro::GetOption<bool>(gfx_gamespecific::GFX_PERF_QUERIES_ENABLE, /*def=*/false));
+
+  if (Libretro::VR::IsEnabled())
+    Libretro::VR::ApplyConfig();
+
+#ifdef CIFACE_USE_DUALSHOCKUDPCLIENT
+  // wiimote - alternative input server
+  {
+    const bool dsu_enabled = Libretro::GetOption<bool>(
+        Libretro::Options::wiimote_dsu::DSU_ENABLED, false);
+
+    Config::SetBase(ciface::DualShockUDPClient::Settings::SERVERS_ENABLED, dsu_enabled);
+
+    if (dsu_enabled)
+    {
+      const int o1 = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_IP_1, 127);
+      const int o2 = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_IP_2, 0);
+      const int o3 = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_IP_3, 0);
+      const int o4 = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_IP_4, 1);
+      const int port = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_PORT, 26760);
+
+      const std::string address = fmt::format("{}.{}.{}.{}", o1, o2, o3, o4);
+      const std::string servers_entry = fmt::format("DS4:{}:{};", address, port);
+
+      Config::SetBase(ciface::DualShockUDPClient::Settings::SERVERS, servers_entry);
+    }
+  }
+#endif
 
   /* disable throttling emulation to match GetTargetRefreshRate() */
   Core::SetIsThrottlerTempDisabled(true);
@@ -814,6 +843,7 @@ void retro_unload_game(void)
   // Rest of shutdown
   g_context_status.MarkUnitialized();
   Libretro::Input::Shutdown();
+  Libretro::VR::Shutdown();
   Libretro::Log::Shutdown();
   UICommon::ShutdownControllers();
   UICommon::Shutdown();
